@@ -1,0 +1,355 @@
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>极速跑酷：财富挑战</title>
+    <!-- 使用 Tailwind CSS 进行快速样式构建 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --safe-top: env(safe-area-inset-top); }
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: -apple-system, system-ui, sans-serif;
+            touch-action: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #gameCanvas {
+            display: block;
+            background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
+        }
+        .ui-screen {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(8px);
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 2rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            width: 85%;
+            max-width: 350px;
+        }
+        .hidden { display: none !important; }
+        
+        /* 粒子效果 */
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 游戏 UI 层 -->
+    <div id="hud" class="absolute top-0 left-0 w-full p-4 flex justify-between items-start z-20 pointer-events-none" style="padding-top: calc(1rem + var(--safe-top))">
+        <div class="flex flex-col">
+            <div class="bg-black/20 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/30">
+                <div class="text-xs text-white/70 font-bold uppercase tracking-wider">Score</div>
+                <div id="scoreVal" class="text-2xl font-black text-white italic">0</div>
+            </div>
+        </div>
+        
+        <div class="flex flex-col items-end gap-2">
+            <div class="flex items-center bg-yellow-400 px-4 py-2 rounded-full shadow-lg border-2 border-yellow-200">
+                <span class="text-lg mr-1">💰</span>
+                <span id="coinVal" class="text-xl font-bold text-yellow-900">0</span>
+            </div>
+            <div id="shieldBadge" class="flex items-center bg-indigo-600 px-4 py-2 rounded-full shadow-lg border-2 border-indigo-400 transition-all scale-0 opacity-0">
+                <span class="text-lg mr-1">🛡️</span>
+                <span id="shieldCount" class="text-xl font-bold text-white">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 初始界面 -->
+    <div id="startScreen" class="ui-screen">
+        <div class="card">
+            <div class="w-20 h-20 bg-blue-500 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-inner">
+                <span class="text-4xl">🏃‍♂️</span>
+            </div>
+            <h1 class="text-3xl font-black text-gray-800 mb-2">极速跑酷</h1>
+            <p class="text-gray-500 mb-8 leading-tight">躲避障碍，收集金币<br><span class="font-bold text-blue-500">10 金币 = 1 护盾</span></p>
+            <button id="startBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold py-4 rounded-2xl transition-transform active:scale-90 shadow-xl">
+                开始游戏
+            </button>
+            <p class="mt-4 text-xs text-gray-400">点击屏幕跳跃 · 支持离线游玩</p>
+        </div>
+    </div>
+
+    <!-- 结算界面 -->
+    <div id="gameOverScreen" class="ui-screen hidden">
+        <div class="card border-t-8 border-red-500">
+            <h2 class="text-xl font-bold text-red-500 mb-1">本次挑战结束</h2>
+            <div id="finalScore" class="text-6xl font-black text-gray-800 mb-4">0</div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-8">
+                <div class="bg-gray-100 p-3 rounded-xl">
+                    <div class="text-xs text-gray-400 uppercase">最高得分</div>
+                    <div id="bestScore" class="font-bold text-gray-700">0</div>
+                </div>
+                <div class="bg-gray-100 p-3 rounded-xl">
+                    <div class="text-xs text-gray-400 uppercase">累计金币</div>
+                    <div id="finalCoins" class="font-bold text-yellow-600">0</div>
+                </div>
+            </div>
+
+            <button id="restartBtn" class="w-full bg-gray-900 text-white text-xl font-bold py-4 rounded-2xl transition-transform active:scale-90">
+                再来一局
+            </button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        /**
+         * 游戏逻辑核心
+         */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 游戏状态
+        let state = {
+            status: 'start', // start, playing, over
+            score: 0,
+            coins: 0,
+            shields: 0,
+            speed: 6,
+            highScore: localStorage.getItem('ultra_runner_hi') || 0
+        };
+
+        // 玩家配置
+        const player = {
+            x: 0, y: 0, w: 45, h: 45,
+            vy: 0,
+            jump: -14,
+            gravity: 0.7,
+            isJumping: false,
+            invincible: 0,
+            color: '#2563eb'
+        };
+
+        let entities = [];
+        const groundHeight = 110;
+
+        // 初始化
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.x = 60;
+            player.y = canvas.height - groundHeight - player.h;
+            player.vy = 0;
+            state.score = 0;
+            state.coins = 0;
+            state.shields = 0;
+            state.speed = 6;
+            entities = [];
+            updateUI();
+        }
+
+        // 核心更新循环
+        function update() {
+            if (state.status === 'playing') {
+                // 1. 物理引擎
+                player.vy += player.gravity;
+                player.y += player.vy;
+                
+                const floor = canvas.height - groundHeight - player.h;
+                if (player.y > floor) {
+                    player.y = floor;
+                    player.vy = 0;
+                    player.isJumping = false;
+                }
+
+                if (player.invincible > 0) player.invincible--;
+
+                // 2. 生成逻辑
+                if (entities.length === 0 || (canvas.width - entities[entities.length-1].x > 250 + Math.random() * 300)) {
+                    spawnEntity();
+                }
+
+                // 3. 实体移动与碰撞
+                for (let i = entities.length - 1; i >= 0; i--) {
+                    const e = entities[i];
+                    e.x -= state.speed;
+
+                    // 碰撞检测
+                    if (checkCollision(player, e)) {
+                        if (e.type === 'coin') {
+                            state.coins++;
+                            entities.splice(i, 1);
+                            if (state.coins >= 10) {
+                                state.coins -= 10;
+                                state.shields++;
+                            }
+                            updateUI();
+                        } else if (player.invincible <= 0) {
+                            if (state.shields > 0) {
+                                state.shields--;
+                                player.invincible = 100;
+                                entities.splice(i, 1);
+                                updateUI();
+                            } else {
+                                gameOver();
+                            }
+                        }
+                    }
+
+                    if (e.x + 100 < 0) entities.splice(i, 1);
+                }
+
+                // 4. 难度递增
+                state.score += 0.1;
+                state.speed += 0.0012;
+                updateUI();
+            }
+            
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制地面
+            ctx.fillStyle = '#10b981';
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+            ctx.fillStyle = '#059669';
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, 10);
+
+            // 绘制实体
+            entities.forEach(e => {
+                ctx.font = `${e.size}px serif`;
+                ctx.textBaseline = 'top';
+                ctx.fillText(e.icon, e.x, e.y);
+            });
+
+            // 绘制玩家
+            ctx.save();
+            if (player.invincible > 0 && Math.floor(Date.now() / 100) % 2 === 0) ctx.globalAlpha = 0.2;
+            
+            // 护盾光环
+            if (state.shields > 0) {
+                ctx.beginPath();
+                ctx.arc(player.x + player.w/2, player.y + player.h/2, player.w, 0, Math.PI*2);
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = 4;
+                ctx.setLineDash([8, 4]);
+                ctx.stroke();
+            }
+
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.roundRect(player.x, player.y, player.w, player.h, 12);
+            ctx.fill();
+            
+            // 装饰：眼睛
+            ctx.fillStyle = 'white';
+            ctx.fillRect(player.x + 30, player.y + 12, 10, 10);
+            ctx.restore();
+        }
+
+        function spawnEntity() {
+            const isCoin = Math.random() < 0.35;
+            const size = 35 + Math.random() * 20;
+            entities.push({
+                type: isCoin ? 'coin' : 'obs',
+                icon: isCoin ? '💰' : ['🌵','🔥','🧱','📦'][Math.floor(Math.random()*4)],
+                x: canvas.width + 50,
+                y: isCoin ? (canvas.height - groundHeight - 60 - Math.random()*100) : (canvas.height - groundHeight - size),
+                size: size,
+                w: size * 0.8,
+                h: size * 0.8
+            });
+        }
+
+        function checkCollision(p, e) {
+            return p.x < e.x + e.w && p.x + p.w > e.x && p.y < e.y + e.h && p.y + p.h > e.y;
+        }
+
+        function updateUI() {
+            document.getElementById('scoreVal').innerText = Math.floor(state.score);
+            document.getElementById('coinVal').innerText = state.coins;
+            document.getElementById('shieldCount').innerText = state.shields;
+            
+            const badge = document.getElementById('shieldBadge');
+            if (state.shields > 0) {
+                badge.style.opacity = '1';
+                badge.style.transform = 'scale(1)';
+            } else {
+                badge.style.opacity = '0';
+                badge.style.transform = 'scale(0)';
+            }
+        }
+
+        function gameOver() {
+            state.status = 'over';
+            if (state.score > state.highScore) {
+                state.highScore = Math.floor(state.score);
+                localStorage.setItem('ultra_runner_hi', state.highScore);
+            }
+            document.getElementById('finalScore').innerText = Math.floor(state.score);
+            document.getElementById('bestScore').innerText = state.highScore;
+            document.getElementById('finalCoins').innerText = state.coins;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function handleInput() {
+            if (state.status === 'playing' && !player.isJumping) {
+                player.vy = player.jump;
+                player.isJumping = true;
+            } else if (state.status !== 'playing') {
+                start();
+            }
+        }
+
+        function start() {
+            init();
+            state.status = 'playing';
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+        }
+
+        // 事件监听
+        window.addEventListener('touchstart', (e) => {
+            if (e.target.tagName !== 'BUTTON') {
+                e.preventDefault();
+                handleInput();
+            }
+        }, {passive: false});
+        
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.tagName !== 'BUTTON') handleInput();
+        });
+
+        document.getElementById('startBtn').onclick = start;
+        document.getElementById('restartBtn').onclick = start;
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        init();
+        update();
+    </script>
+</body>
+</html>
+
+```
