@@ -1,116 +1,120 @@
-```html
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>极速跑酷：财富挑战</title>
-    <!-- 使用 Tailwind CSS 进行快速样式构建 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>极速跑酷 - 财富与挑战</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        :root { --safe-top: env(safe-area-inset-top); }
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #000;
-            font-family: -apple-system, system-ui, sans-serif;
-            touch-action: none;
+            background-color: #f0f2f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            touch-action: manipulation;
             user-select: none;
-            -webkit-tap-highlight-color: transparent;
         }
         #gameCanvas {
             display: block;
-            background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
+            background: linear-gradient(to bottom, #a1c4fd 0%, #c2e9fb 100%);
         }
-        .ui-screen {
+        .ui-overlay {
             position: absolute;
-            inset: 0;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 50;
-            background: rgba(0,0,0,0.4);
-            backdrop-filter: blur(8px);
-        }
-        .card {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 2rem;
-            border-radius: 2rem;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            text-align: center;
-            width: 85%;
-            max-width: 350px;
+            z-index: 30;
         }
         .hidden { display: none !important; }
-        
-        /* 粒子效果 */
-        .particle {
-            position: absolute;
-            pointer-events: none;
-            border-radius: 50%;
+        .glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border-radius: 24px;
+            padding: 2rem;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+            text-align: center;
+        }
+        .shield-active {
+            box-shadow: 0 0 20px #fbbf24;
+            border: 2px solid #fbbf24;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pulse-fast {
+            animation: pulse 0.5s infinite;
         }
     </style>
 </head>
 <body>
 
-    <!-- 游戏 UI 层 -->
-    <div id="hud" class="absolute top-0 left-0 w-full p-4 flex justify-between items-start z-20 pointer-events-none" style="padding-top: calc(1rem + var(--safe-top))">
-        <div class="flex flex-col">
-            <div class="bg-black/20 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/30">
-                <div class="text-xs text-white/70 font-bold uppercase tracking-wider">Score</div>
-                <div id="scoreVal" class="text-2xl font-black text-white italic">0</div>
-            </div>
+    <!-- HUD 界面 -->
+    <div id="hud" class="absolute top-0 left-0 w-full p-4 flex justify-between items-start z-20 pointer-events-none">
+        <div class="flex flex-col gap-1">
+            <div class="text-2xl font-black text-blue-700 bg-white/50 px-3 py-1 rounded-lg">得分: <span id="scoreVal">0</span></div>
+            <div class="text-sm font-bold text-gray-600 px-3">最高: <span id="highScoreVal">0</span></div>
         </div>
         
         <div class="flex flex-col items-end gap-2">
-            <div class="flex items-center bg-yellow-400 px-4 py-2 rounded-full shadow-lg border-2 border-yellow-200">
-                <span class="text-lg mr-1">💰</span>
-                <span id="coinVal" class="text-xl font-bold text-yellow-900">0</span>
+            <!-- 金币显示 -->
+            <div class="flex items-center bg-yellow-400 text-yellow-900 px-4 py-2 rounded-full shadow-lg pointer-events-auto">
+                <span class="text-xl mr-2">💰</span>
+                <span id="coinVal" class="text-xl font-bold">0</span>
             </div>
-            <div id="shieldBadge" class="flex items-center bg-indigo-600 px-4 py-2 rounded-full shadow-lg border-2 border-indigo-400 transition-all scale-0 opacity-0">
-                <span class="text-lg mr-1">🛡️</span>
-                <span id="shieldCount" class="text-xl font-bold text-white">0</span>
+            <!-- 免死金牌显示 -->
+            <div id="shieldContainer" class="flex items-center bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg opacity-30 transition-opacity">
+                <span class="text-xl mr-2">🛡️</span>
+                <span id="shieldCount" class="text-xl font-bold">0</span>
             </div>
         </div>
     </div>
 
-    <!-- 初始界面 -->
-    <div id="startScreen" class="ui-screen">
-        <div class="card">
-            <div class="w-20 h-20 bg-blue-500 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-inner">
-                <span class="text-4xl">🏃‍♂️</span>
+    <!-- 浮动消息提示 -->
+    <div id="toast" class="absolute bottom-24 left-1/2 -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-full text-sm font-bold opacity-0 transition-opacity pointer-events-none z-40">
+        已兑换免死金牌！
+    </div>
+
+    <!-- 开始界面 -->
+    <div id="startScreen" class="ui-overlay">
+        <div class="glass max-w-xs w-full mx-4">
+            <h1 class="text-3xl font-black text-blue-600 mb-2">极速跑酷 2.0</h1>
+            <p class="text-gray-500 mb-6">收集金币兑换金牌，挑战无限可能</p>
+            <div class="flex justify-center gap-4 mb-8">
+                <div class="text-center">
+                    <div class="text-3xl mb-1">💰</div>
+                    <div class="text-xs text-gray-400">收集金币</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl mb-1">🛡️</div>
+                    <div class="text-xs text-gray-400">10金币=1金牌</div>
+                </div>
             </div>
-            <h1 class="text-3xl font-black text-gray-800 mb-2">极速跑酷</h1>
-            <p class="text-gray-500 mb-8 leading-tight">躲避障碍，收集金币<br><span class="font-bold text-blue-500">10 金币 = 1 护盾</span></p>
-            <button id="startBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold py-4 rounded-2xl transition-transform active:scale-90 shadow-xl">
-                开始游戏
+            <button id="startBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-8 rounded-2xl transition-transform active:scale-95 shadow-xl">
+                立即奔跑
             </button>
-            <p class="mt-4 text-xs text-gray-400">点击屏幕跳跃 · 支持离线游玩</p>
         </div>
     </div>
 
-    <!-- 结算界面 -->
-    <div id="gameOverScreen" class="ui-screen hidden">
-        <div class="card border-t-8 border-red-500">
-            <h2 class="text-xl font-bold text-red-500 mb-1">本次挑战结束</h2>
-            <div id="finalScore" class="text-6xl font-black text-gray-800 mb-4">0</div>
+    <!-- 游戏结束界面 -->
+    <div id="gameOverScreen" class="ui-overlay hidden">
+        <div class="glass max-w-xs w-full mx-4 border-b-8 border-red-500">
+            <h2 class="text-2xl font-bold text-red-500 mb-2">力尽倒下</h2>
+            <div class="text-5xl font-black text-gray-800 mb-1" id="finalScore">0</div>
+            <p class="text-gray-500 mb-6">本次得分</p>
             
-            <div class="grid grid-cols-2 gap-4 mb-8">
-                <div class="bg-gray-100 p-3 rounded-xl">
-                    <div class="text-xs text-gray-400 uppercase">最高得分</div>
-                    <div id="bestScore" class="font-bold text-gray-700">0</div>
-                </div>
-                <div class="bg-gray-100 p-3 rounded-xl">
-                    <div class="text-xs text-gray-400 uppercase">累计金币</div>
-                    <div id="finalCoins" class="font-bold text-yellow-600">0</div>
-                </div>
+            <div class="bg-gray-100 p-3 rounded-xl mb-6">
+                <p class="text-sm text-gray-500">收集金币: <span id="finalCoins" class="font-bold text-yellow-600">0</span></p>
             </div>
 
-            <button id="restartBtn" class="w-full bg-gray-900 text-white text-xl font-bold py-4 rounded-2xl transition-transform active:scale-90">
-                再来一局
+            <button id="restartBtn" class="w-full bg-gray-800 hover:bg-black text-white font-bold py-4 px-8 rounded-2xl transition-transform active:scale-95">
+                重新挑战
             </button>
         </div>
     </div>
@@ -118,238 +122,267 @@
     <canvas id="gameCanvas"></canvas>
 
     <script>
-        /**
-         * 游戏逻辑核心
-         */
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
-        // 游戏状态
-        let state = {
-            status: 'start', // start, playing, over
-            score: 0,
-            coins: 0,
-            shields: 0,
-            speed: 6,
-            highScore: localStorage.getItem('ultra_runner_hi') || 0
-        };
+        // UI Elements
+        const scoreVal = document.getElementById('scoreVal');
+        const coinVal = document.getElementById('coinVal');
+        const shieldCount = document.getElementById('shieldCount');
+        const shieldContainer = document.getElementById('shieldContainer');
+        const highScoreVal = document.getElementById('highScoreVal');
+        const toast = document.getElementById('toast');
+        
+        let gameState = 'start'; // start, playing, gameOver
+        let score = 0;
+        let coins = 0;
+        let shields = 0;
+        let highScore = localStorage.getItem('runner_highScore_v2') || 0;
+        highScoreVal.innerText = highScore;
 
-        // 玩家配置
-        const player = {
-            x: 0, y: 0, w: 45, h: 45,
+        // Game Configuration
+        let gameSpeed = 5;
+        const baseSpeed = 5;
+        const gravity = 0.65;
+        const jumpForce = -13;
+        const groundHeight = 100;
+        const shieldCost = 10;
+
+        let player = {
+            x: 60,
+            y: 0,
+            width: 44,
+            height: 44,
             vy: 0,
-            jump: -14,
-            gravity: 0.7,
             isJumping: false,
-            invincible: 0,
-            color: '#2563eb'
+            invincible: 0, // 无敌帧时间
+            draw() {
+                ctx.save();
+                
+                // 绘制护盾特效
+                if (shields > 0) {
+                    ctx.beginPath();
+                    ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width * 0.8, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#fbbf24';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    ctx.fillStyle = 'rgba(251, 191, 36, 0.1)';
+                    ctx.fill();
+                }
+
+                // 无敌闪烁
+                if (this.invincible > 0 && Math.floor(Date.now() / 100) % 2 === 0) {
+                    ctx.globalAlpha = 0.3;
+                }
+
+                // 角色主体
+                ctx.fillStyle = '#3B82F6';
+                ctx.beginPath();
+                ctx.roundRect(this.x, this.y, this.width, this.height, 10);
+                ctx.fill();
+                
+                // 眼睛
+                ctx.fillStyle = 'white';
+                ctx.fillRect(this.x + 28, this.y + 12, 10, 10);
+                ctx.fillStyle = 'black';
+                ctx.fillRect(this.x + 34, this.y + 15, 4, 4);
+
+                ctx.restore();
+            }
         };
 
-        let entities = [];
-        const groundHeight = 110;
+        let entities = []; // 包含障碍物和金币
 
-        // 初始化
-        function init() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            player.x = 60;
-            player.y = canvas.height - groundHeight - player.h;
-            player.vy = 0;
-            state.score = 0;
-            state.coins = 0;
-            state.shields = 0;
-            state.speed = 6;
+        function initGame() {
+            score = 0;
+            coins = 0;
+            shields = 0;
+            gameSpeed = baseSpeed;
             entities = [];
+            player.y = canvas.height - groundHeight - player.height;
+            player.vy = 0;
+            player.invincible = 0;
             updateUI();
         }
 
-        // 核心更新循环
-        function update() {
-            if (state.status === 'playing') {
-                // 1. 物理引擎
-                player.vy += player.gravity;
-                player.y += player.vy;
-                
-                const floor = canvas.height - groundHeight - player.h;
-                if (player.y > floor) {
-                    player.y = floor;
-                    player.vy = 0;
-                    player.isJumping = false;
-                }
-
-                if (player.invincible > 0) player.invincible--;
-
-                // 2. 生成逻辑
-                if (entities.length === 0 || (canvas.width - entities[entities.length-1].x > 250 + Math.random() * 300)) {
-                    spawnEntity();
-                }
-
-                // 3. 实体移动与碰撞
-                for (let i = entities.length - 1; i >= 0; i--) {
-                    const e = entities[i];
-                    e.x -= state.speed;
-
-                    // 碰撞检测
-                    if (checkCollision(player, e)) {
-                        if (e.type === 'coin') {
-                            state.coins++;
-                            entities.splice(i, 1);
-                            if (state.coins >= 10) {
-                                state.coins -= 10;
-                                state.shields++;
-                            }
-                            updateUI();
-                        } else if (player.invincible <= 0) {
-                            if (state.shields > 0) {
-                                state.shields--;
-                                player.invincible = 100;
-                                entities.splice(i, 1);
-                                updateUI();
-                            } else {
-                                gameOver();
-                            }
-                        }
-                    }
-
-                    if (e.x + 100 < 0) entities.splice(i, 1);
-                }
-
-                // 4. 难度递增
-                state.score += 0.1;
-                state.speed += 0.0012;
-                updateUI();
-            }
-            
-            draw();
-            requestAnimationFrame(update);
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.y = canvas.height - groundHeight - player.height;
         }
 
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // 绘制地面
-            ctx.fillStyle = '#10b981';
-            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
-            ctx.fillStyle = '#059669';
-            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, 10);
-
-            // 绘制实体
-            entities.forEach(e => {
-                ctx.font = `${e.size}px serif`;
-                ctx.textBaseline = 'top';
-                ctx.fillText(e.icon, e.x, e.y);
-            });
-
-            // 绘制玩家
-            ctx.save();
-            if (player.invincible > 0 && Math.floor(Date.now() / 100) % 2 === 0) ctx.globalAlpha = 0.2;
-            
-            // 护盾光环
-            if (state.shields > 0) {
-                ctx.beginPath();
-                ctx.arc(player.x + player.w/2, player.y + player.h/2, player.w, 0, Math.PI*2);
-                ctx.strokeStyle = '#fbbf24';
-                ctx.lineWidth = 4;
-                ctx.setLineDash([8, 4]);
-                ctx.stroke();
-            }
-
-            ctx.fillStyle = player.color;
-            ctx.beginPath();
-            ctx.roundRect(player.x, player.y, player.w, player.h, 12);
-            ctx.fill();
-            
-            // 装饰：眼睛
-            ctx.fillStyle = 'white';
-            ctx.fillRect(player.x + 30, player.y + 12, 10, 10);
-            ctx.restore();
-        }
+        window.addEventListener('resize', resize);
+        resize();
 
         function spawnEntity() {
-            const isCoin = Math.random() < 0.35;
-            const size = 35 + Math.random() * 20;
-            entities.push({
-                type: isCoin ? 'coin' : 'obs',
-                icon: isCoin ? '💰' : ['🌵','🔥','🧱','📦'][Math.floor(Math.random()*4)],
-                x: canvas.width + 50,
-                y: isCoin ? (canvas.height - groundHeight - 60 - Math.random()*100) : (canvas.height - groundHeight - size),
-                size: size,
-                w: size * 0.8,
-                h: size * 0.8
-            });
+            const rand = Math.random();
+            const xPos = canvas.width + 100;
+            
+            if (rand < 0.3) { // 30% 概率生成金币
+                entities.push({
+                    type: 'coin',
+                    x: xPos,
+                    y: canvas.height - groundHeight - 40 - Math.random() * 80,
+                    width: 30,
+                    height: 30,
+                    collected: false
+                });
+            } else { // 70% 概率生成障碍物
+                const size = 35 + Math.random() * 25;
+                const obstacles = ['🌵', '🔥', '🧱', '📦'];
+                entities.push({
+                    type: 'obstacle',
+                    x: xPos,
+                    y: canvas.height - groundHeight - size,
+                    width: size,
+                    height: size,
+                    emoji: obstacles[Math.floor(Math.random() * obstacles.length)]
+                });
+            }
         }
 
-        function checkCollision(p, e) {
-            return p.x < e.x + e.w && p.x + p.w > e.x && p.y < e.y + e.h && p.y + p.h > e.y;
+        function showToast(msg) {
+            toast.innerText = msg;
+            toast.style.opacity = '1';
+            setTimeout(() => toast.style.opacity = '0', 2000);
         }
 
         function updateUI() {
-            document.getElementById('scoreVal').innerText = Math.floor(state.score);
-            document.getElementById('coinVal').innerText = state.coins;
-            document.getElementById('shieldCount').innerText = state.shields;
+            scoreVal.innerText = Math.floor(score);
+            coinVal.innerText = coins;
+            shieldCount.innerText = shields;
             
-            const badge = document.getElementById('shieldBadge');
-            if (state.shields > 0) {
-                badge.style.opacity = '1';
-                badge.style.transform = 'scale(1)';
+            if (shields > 0) {
+                shieldContainer.classList.remove('opacity-30');
+                shieldContainer.classList.add('animate-pulse-fast');
             } else {
-                badge.style.opacity = '0';
-                badge.style.transform = 'scale(0)';
+                shieldContainer.classList.add('opacity-30');
+                shieldContainer.classList.remove('animate-pulse-fast');
+            }
+
+            if (score > highScore) {
+                highScore = Math.floor(score);
+                highScoreVal.innerText = highScore;
+                localStorage.setItem('runner_highScore_v2', highScore);
             }
         }
 
-        function gameOver() {
-            state.status = 'over';
-            if (state.score > state.highScore) {
-                state.highScore = Math.floor(state.score);
-                localStorage.setItem('ultra_runner_hi', state.highScore);
-            }
-            document.getElementById('finalScore').innerText = Math.floor(state.score);
-            document.getElementById('bestScore').innerText = state.highScore;
-            document.getElementById('finalCoins').innerText = state.coins;
-            document.getElementById('gameOverScreen').classList.remove('hidden');
-        }
-
-        function handleInput() {
-            if (state.status === 'playing' && !player.isJumping) {
-                player.vy = player.jump;
+        function jump() {
+            if (gameState === 'playing' && !player.isJumping) {
+                player.vy = jumpForce;
                 player.isJumping = true;
-            } else if (state.status !== 'playing') {
-                start();
+            } else if (gameState === 'start' || gameState === 'gameOver') {
+                startGame();
             }
         }
 
-        function start() {
-            init();
-            state.status = 'playing';
+        // Input
+        window.addEventListener('touchstart', (e) => { e.preventDefault(); jump(); }, { passive: false });
+        window.addEventListener('mousedown', jump);
+        document.getElementById('startBtn').onclick = (e) => { e.stopPropagation(); startGame(); };
+        document.getElementById('restartBtn').onclick = (e) => { e.stopPropagation(); startGame(); };
+
+        function startGame() {
+            initGame();
+            gameState = 'playing';
             document.getElementById('startScreen').classList.add('hidden');
             document.getElementById('gameOverScreen').classList.add('hidden');
         }
 
-        // 事件监听
-        window.addEventListener('touchstart', (e) => {
-            if (e.target.tagName !== 'BUTTON') {
-                e.preventDefault();
-                handleInput();
+        function drawGround() {
+            // 背景渐变
+            ctx.fillStyle = '#4ADE80'; 
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+            ctx.fillStyle = '#16a34a';
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, 8);
+        }
+
+        function update() {
+            if (gameState === 'playing') {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawGround();
+
+                // 物理
+                player.vy += gravity;
+                player.y += player.vy;
+                if (player.invincible > 0) player.invincible--;
+
+                const groundY = canvas.height - groundHeight - player.height;
+                if (player.y > groundY) {
+                    player.y = groundY;
+                    player.vy = 0;
+                    player.isJumping = false;
+                }
+                player.draw();
+
+                // 难度增长与生成
+                const spawnRate = Math.max(40, 100 - (gameSpeed * 2));
+                if (entities.length === 0 || canvas.width - entities[entities.length-1].x > (200 + Math.random() * 200)) {
+                    spawnEntity();
+                }
+
+                // 实体更新
+                for (let i = entities.length - 1; i >= 0; i--) {
+                    let e = entities[i];
+                    e.x -= gameSpeed;
+
+                    if (e.type === 'coin') {
+                        ctx.font = '24px serif';
+                        ctx.fillText('💰', e.x, e.y + e.height);
+                    } else {
+                        ctx.font = `${e.width}px serif`;
+                        ctx.fillText(e.emoji, e.x, e.y + e.height);
+                    }
+
+                    // 碰撞检测
+                    if (
+                        player.x < e.x + e.width - 10 &&
+                        player.x + player.width > e.x + 10 &&
+                        player.y < e.y + e.height - 10 &&
+                        player.y + player.height > e.y + 10
+                    ) {
+                        if (e.type === 'coin') {
+                            coins++;
+                            entities.splice(i, 1);
+                            // 自动兑换
+                            if (coins >= shieldCost) {
+                                coins -= shieldCost;
+                                shields++;
+                                showToast("获得免死金牌！🛡️");
+                            }
+                            updateUI();
+                        } else if (player.invincible <= 0) {
+                            if (shields > 0) {
+                                shields--;
+                                player.invincible = 90; // 1.5秒无敌
+                                entities.splice(i, 1);
+                                showToast("金牌破碎！已抵挡伤害");
+                                updateUI();
+                            } else {
+                                gameState = 'gameOver';
+                                document.getElementById('finalScore').innerText = Math.floor(score);
+                                document.getElementById('finalCoins').innerText = coins;
+                                document.getElementById('gameOverScreen').classList.remove('hidden');
+                            }
+                        }
+                    }
+
+                    if (e.x + 200 < 0) entities.splice(i, 1);
+                }
+
+                score += 0.1;
+                gameSpeed += 0.0015; // 速度持续增加
+                updateUI();
+            } else {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawGround();
+                player.draw();
             }
-        }, {passive: false});
-        
-        window.addEventListener('mousedown', (e) => {
-            if (e.target.tagName !== 'BUTTON') handleInput();
-        });
+            requestAnimationFrame(update);
+        }
 
-        document.getElementById('startBtn').onclick = start;
-        document.getElementById('restartBtn').onclick = start;
-
-        window.addEventListener('resize', () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        });
-
-        init();
         update();
     </script>
 </body>
 </html>
-
-```
